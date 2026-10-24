@@ -1,0 +1,201 @@
+#include <SPI.h>
+#include <MFRC522.h>
+
+// ========================================
+// PIN DEFINITIONS
+// ========================================
+#define SS_PIN      5
+#define RST_PIN    22
+#define SCK_PIN    18
+#define MOSI_PIN   23
+#define MISO_PIN   19
+
+#define LED_RED    27
+#define LED_BLUE   26
+#define LED_GREEN  25
+#define BUZZER      4
+
+// ========================================
+// FUNCTION DECLARATIONS
+// ========================================
+void allOFF();
+void accessGranted();
+void accessDenied();
+void standbyBlink();
+void hardwareError();
+bool matchUID(byte *scanned, byte *stored);
+
+// ========================================
+// RFID OBJECT
+// ========================================
+MFRC522 rfid(SS_PIN, RST_PIN);
+
+// ========================================
+// CARD UID (CHANGE TO YOUR REAL UID)
+// ========================================
+byte whiteCardUID[] = {0xAB, 0xCD, 0xEF, 0x12};
+byte blueTagUID[]   = {0x34, 0x56, 0x78, 0x90};
+
+// ========================================
+// SETUP
+// ========================================
+void setup() {
+  Serial.begin(115200);
+  delay(100);
+
+  pinMode(LED_RED, OUTPUT);
+  pinMode(LED_BLUE, OUTPUT);
+  pinMode(LED_GREEN, OUTPUT);
+  pinMode(BUZZER, OUTPUT);
+
+  allOFF();
+
+  SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
+  rfid.PCD_Init();
+  delay(50);
+
+  if (!rfid.PCD_PerformSelfTest()) {
+    Serial.println("RC522 NOT FOUND! Check Wiring.");
+    hardwareError();
+  } 
+  else {
+    rfid.PCD_Init();
+    Serial.println("RC522 Ready!");
+  }
+
+  Serial.println("================================");
+  Serial.println("White Card = Access Granted");
+  Serial.println("Blue Tag   = Access Denied");
+  Serial.println("================================");
+}
+
+// ========================================
+// LOOP
+// ========================================
+void loop() {
+
+  standbyBlink();
+
+  if (!rfid.PICC_IsNewCardPresent()) return;
+  if (!rfid.PICC_ReadCardSerial()) return;
+
+  digitalWrite(LED_BLUE, LOW);
+
+  Serial.print("Scanned UID: ");
+
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    if (rfid.uid.uidByte[i] < 0x10) Serial.print("0");
+    Serial.print(rfid.uid.uidByte[i], HEX);
+    Serial.print(" ");
+  }
+
+  Serial.println();
+
+  if (matchUID(rfid.uid.uidByte, whiteCardUID)) {
+    accessGranted();
+  }
+  else if (matchUID(rfid.uid.uidByte, blueTagUID)) {
+    accessDenied();
+  }
+  else {
+    Serial.println("UNKNOWN CARD!");
+    accessDenied();
+  }
+
+  rfid.PICC_HaltA();
+  rfid.PCD_StopCrypto1();
+
+  Serial.println("Scan Again...");
+}
+
+// ========================================
+// UID MATCH
+// ========================================
+bool matchUID(byte *scanned, byte *stored) {
+  for (byte i = 0; i < 4; i++) {
+    if (scanned[i] != stored[i]) return false;
+  }
+  return true;
+}
+
+// ========================================
+// ACCESS GRANTED
+// ========================================
+void accessGranted() {
+
+  Serial.println("ACCESS GRANTED");
+  allOFF();
+
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(LED_GREEN, HIGH);
+    delay(200);
+    digitalWrite(LED_GREEN, LOW);
+    delay(200);
+  }
+
+  digitalWrite(LED_GREEN, HIGH);
+
+  digitalWrite(BUZZER, HIGH);
+  delay(500);
+  digitalWrite(BUZZER, LOW);
+
+  delay(1500);
+
+  digitalWrite(LED_GREEN, LOW);
+}
+
+// ========================================
+// ACCESS DENIED
+// ========================================
+void accessDenied() {
+
+  Serial.println("ACCESS DENIED");
+  allOFF();
+
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(LED_RED, HIGH);
+    digitalWrite(BUZZER, HIGH);
+    delay(200);
+
+    digitalWrite(LED_RED, LOW);
+    digitalWrite(BUZZER, LOW);
+    delay(150);
+  }
+
+  digitalWrite(LED_RED, HIGH);
+  delay(500);
+  digitalWrite(LED_RED, LOW);
+}
+
+// ========================================
+// STANDBY MODE
+// ========================================
+void standbyBlink() {
+  digitalWrite(LED_BLUE, HIGH);
+  delay(500);
+  digitalWrite(LED_BLUE, LOW);
+  delay(500);
+}
+
+// ========================================
+// HARDWARE ERROR
+// ========================================
+void hardwareError() {
+
+  while (1) {
+    digitalWrite(LED_RED, HIGH);
+    delay(100);
+    digitalWrite(LED_RED, LOW);
+    delay(100);
+  }
+}
+
+// ========================================
+// ALL OFF
+// ========================================
+void allOFF() {
+  digitalWrite(LED_RED, LOW);
+  digitalWrite(LED_BLUE, LOW);
+  digitalWrite(LED_GREEN, LOW);
+  digitalWrite(BUZZER, LOW);
+}
